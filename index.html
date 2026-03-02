@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#ff4500">
+<link rel="manifest" href="manifest.json">
+<title>MRF Token Scanner</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+:root{
+  --bg:#0f0f0f;--surface:#1c1c1e;--border:#2c2c2e;
+  --accent:#ff4500;--gold:#ffd60a;--text:#f5f5f7;
+  --muted:#8e8e93;--green:#30d158;--red:#ff453a;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html{height:100%;}
+body{height:100%;background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;overflow:hidden;}
+
+.screen{display:none;flex-direction:column;overflow:hidden;position:fixed;inset:0;}
+.screen.active{display:flex;}
+
+/* TOPBAR */
+.topbar{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top,0px));
+  background:var(--surface);border-bottom:1px solid var(--border);}
+.logo{font-size:1rem;font-weight:800;}
+.logo span{color:var(--accent);}
+.topbar-sub{font-size:0.65rem;color:var(--muted);font-family:'Space Mono',monospace;}
+.back-btn{background:var(--border);border:none;color:var(--text);border-radius:8px;
+  padding:6px 12px;font-family:'Syne',sans-serif;font-weight:700;font-size:0.8rem;cursor:pointer;}
+
+/* SCROLL */
+.scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px;}
+
+/* HOME */
+.section-label{font-size:0.62rem;font-family:'Space Mono',monospace;color:var(--muted);
+  text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;}
+.dealer-input{width:100%;background:var(--surface);border:1.5px solid var(--border);
+  border-radius:12px;color:var(--text);font-family:'Syne',sans-serif;font-size:1rem;
+  padding:13px 16px;outline:none;margin-bottom:12px;}
+.dealer-input:focus{border-color:var(--accent);}
+.main-btn{width:100%;background:var(--accent);border:none;border-radius:14px;color:white;
+  font-family:'Syne',sans-serif;font-size:1rem;font-weight:800;padding:18px;cursor:pointer;
+  margin-bottom:14px;box-shadow:0 4px 20px rgba(255,69,0,0.35);}
+.stats-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.stat-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;}
+.stat-lbl{font-size:0.6rem;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:4px;}
+.stat-val{font-size:1.4rem;font-weight:800;}
+.stat-val.gold{color:var(--gold);}
+.entry-card{background:var(--surface);border:1px solid var(--border);
+  border-left:3px solid var(--gold);border-radius:12px;padding:12px 14px;margin-bottom:8px;}
+.entry-card.approved{border-left-color:var(--green);}
+.entry-row{display:flex;justify-content:space-between;margin-bottom:2px;}
+.entry-dealer{font-weight:700;font-size:0.9rem;}
+.entry-amount{font-weight:800;color:var(--gold);font-family:'Space Mono',monospace;}
+.entry-detail{font-size:0.68rem;color:var(--muted);font-family:'Space Mono',monospace;}
+.empty{text-align:center;color:var(--muted);font-size:0.8rem;padding:28px 0;
+  font-family:'Space Mono',monospace;line-height:1.8;}
+
+/* BOTTOM NAV */
+.bnav{flex-shrink:0;display:flex;background:var(--surface);border-top:1px solid var(--border);
+  padding:8px 0;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));}
+.bnav-btn{flex:1;background:none;border:none;color:var(--muted);font-family:'Syne',sans-serif;
+  font-size:0.68rem;font-weight:700;display:flex;flex-direction:column;align-items:center;
+  gap:3px;cursor:pointer;padding:4px 0;}
+.bnav-btn.active{color:var(--accent);}
+.bnav-icon{font-size:18px;}
+
+/* ── SCAN SCREEN ── */
+/* Camera */
+.cam-area{flex-shrink:0;position:relative;background:#000;overflow:hidden;}
+#videoEl{width:100%;height:100%;object-fit:cover;display:block;}
+#snapCanvas{display:none;}
+#previewImg{width:100%;height:100%;object-fit:contain;display:none;
+  position:absolute;inset:0;background:#000;}
+.cam-hint{position:absolute;bottom:8px;left:0;right:0;text-align:center;
+  font-size:0.7rem;color:rgba(255,255,255,0.7);font-family:'Space Mono',monospace;
+  pointer-events:none;}
+.corner{position:absolute;width:24px;height:24px;}
+.corner.tl{top:10px;left:10px;border-top:2.5px solid var(--accent);border-left:2.5px solid var(--accent);}
+.corner.tr{top:10px;right:10px;border-top:2.5px solid var(--accent);border-right:2.5px solid var(--accent);}
+.corner.bl{bottom:10px;left:10px;border-bottom:2.5px solid var(--accent);border-left:2.5px solid var(--accent);}
+.corner.br{bottom:10px;right:10px;border-bottom:2.5px solid var(--accent);border-right:2.5px solid var(--accent);}
+
+/* Batch info bar */
+.batch-bar{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;
+  padding:6px 14px;background:#1a0a00;border-bottom:1px solid #3d1f00;}
+.batch-label{font-size:0.72rem;font-family:'Space Mono',monospace;color:var(--gold);}
+.batch-total{font-size:1rem;font-weight:800;color:var(--gold);font-family:'Space Mono',monospace;}
+
+/* Mini tally */
+.mini-tally{flex-shrink:0;display:grid;grid-template-columns:repeat(6,1fr);
+  gap:4px;padding:6px 8px;background:var(--bg);}
+.mt{border-radius:7px;padding:5px 3px;text-align:center;border:1.5px solid var(--border);}
+.mt.lit{border-color:var(--gold);}
+.mt-d{font-size:0.5rem;color:var(--muted);font-family:'Space Mono',monospace;}
+.mt-c{font-size:1.05rem;font-weight:800;}
+.mt-v{font-size:0.5rem;color:var(--gold);font-family:'Space Mono',monospace;}
+.t25b{background:#2a1206;}.t35b{background:#5a4000;}.t50b{background:#2a0a5e;}.t75b{background:#0a2e14;}
+.t100b{background:#2e0a0a;}.t150b{background:#0a1a2e;}.t200b{background:#2e0a20;}
+
+/* Result panel */
+.result-panel{flex-shrink:0;padding:7px 12px;background:#111;
+  font-family:'Space Mono',monospace;font-size:0.72rem;color:var(--muted);
+  border-top:1px solid var(--border);min-height:36px;line-height:1.5;}
+.result-panel.analyzing{color:var(--gold);}
+.result-panel.ok{color:var(--green);}
+.result-panel.err{color:var(--red);}
+
+/* Batch log */
+.batch-log{flex:1;overflow-y:auto;padding:6px 10px;}
+.batch-item{background:var(--surface);border-radius:8px;padding:8px 12px;
+  margin-bottom:5px;display:flex;align-items:center;gap:10px;}
+.batch-num{font-size:0.65rem;color:var(--muted);font-family:'Space Mono',monospace;flex-shrink:0;width:18px;}
+.batch-detail{flex:1;font-size:0.72rem;color:var(--muted);font-family:'Space Mono',monospace;}
+.batch-amt{font-weight:800;color:var(--gold);font-family:'Space Mono',monospace;font-size:0.82rem;}
+
+/* Action buttons */
+.actions{flex-shrink:0;padding:6px 10px;
+  padding-bottom:calc(6px + env(safe-area-inset-bottom,0px));
+  background:var(--surface);border-top:1px solid var(--border);display:flex;gap:6px;}
+.btn{flex:1;border:none;border-radius:11px;font-family:'Syne',sans-serif;
+  font-weight:800;font-size:0.85rem;padding:12px 8px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:5px;}
+.btn:active{opacity:0.8;}
+.btn:disabled{opacity:0.3;pointer-events:none;}
+.btn-cam{background:var(--accent);color:white;}
+.btn-ai{background:#1a5c1a;color:white;}
+.btn-done{background:var(--gold);color:#000;}
+.btn-sec{background:var(--border);color:var(--text);}
+
+/* ── SUMMARY SCREEN ── */
+.summary-header{flex-shrink:0;background:var(--accent);padding:16px;
+  padding-top:calc(16px + env(safe-area-inset-top,0px));}
+.summary-dealer{font-size:0.7rem;opacity:0.8;font-family:'Space Mono',monospace;}
+.summary-title{font-size:1.1rem;font-weight:800;margin-bottom:2px;}
+.summary-total{font-size:2rem;font-weight:800;font-family:'Space Mono',monospace;}
+.summary-sub{font-size:0.7rem;opacity:0.8;font-family:'Space Mono',monospace;}
+.denom-row{display:flex;align-items:center;background:var(--surface);
+  border-radius:10px;padding:12px 14px;margin-bottom:8px;}
+.denom-dot{width:14px;height:14px;border-radius:3px;flex-shrink:0;margin-right:12px;}
+.denom-name{font-weight:700;font-size:0.9rem;flex:1;}
+.denom-count{font-family:'Space Mono',monospace;color:var(--muted);font-size:0.82rem;margin-right:12px;}
+.denom-val{font-family:'Space Mono',monospace;font-weight:800;color:var(--gold);}
+.batch-summary{background:var(--surface);border-radius:10px;padding:12px 14px;margin-bottom:16px;}
+.batch-summary-title{font-size:0.62rem;color:var(--muted);font-family:'Space Mono',monospace;
+  text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;}
+.batch-summary-row{font-size:0.72rem;font-family:'Space Mono',monospace;color:var(--muted);
+  padding:3px 0;border-bottom:1px solid var(--border);}
+.batch-summary-row:last-child{border-bottom:none;}
+.report-btns{display:flex;gap:10px;margin-bottom:10px;}
+.btn-excel{flex:1;background:#1d6f42;color:white;border:none;border-radius:12px;
+  padding:14px;font-family:'Syne',sans-serif;font-weight:700;font-size:0.9rem;cursor:pointer;}
+.btn-wa{flex:1;background:#25d366;color:white;border:none;border-radius:12px;
+  padding:14px;font-family:'Syne',sans-serif;font-weight:700;font-size:0.9rem;cursor:pointer;}
+.btn-new{width:100%;background:var(--accent);color:white;border:none;border-radius:12px;
+  padding:14px;font-family:'Syne',sans-serif;font-weight:800;font-size:0.95rem;cursor:pointer;
+  margin-bottom:calc(10px + env(safe-area-inset-bottom,0px));}
+
+/* LOG SCREEN */
+.grand-bar{background:var(--accent);border-radius:12px;padding:14px;
+  margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}
+.gt-lbl{font-size:0.72rem;font-weight:700;opacity:0.85;}
+.gt-sub{font-size:0.6rem;opacity:0.65;font-family:'Space Mono',monospace;}
+.gt-amt{font-size:1.5rem;font-weight:800;font-family:'Space Mono',monospace;}
+.entry-actions{display:flex;gap:8px;margin-top:8px;}
+.btn-approve{flex:1;background:var(--green);color:#000;border:none;border-radius:8px;
+  padding:7px;font-family:'Syne',sans-serif;font-weight:700;font-size:0.78rem;cursor:pointer;}
+.btn-del{background:var(--border);color:var(--muted);border:none;border-radius:8px;
+  padding:7px 12px;cursor:pointer;}
+.log-report-btns{display:flex;gap:10px;margin-top:14px;
+  padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));}
+
+@keyframes spin{to{transform:rotate(360deg);}}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid transparent;
+  border-top-color:currentColor;border-radius:50%;animation:spin 0.6s linear infinite;
+  vertical-align:middle;margin-right:5px;}
+</style>
+</head>
+<body>
+
+<!-- ═══ HOME ═══ -->
+<div class="screen active" id="homeScreen">
+  <div class="topbar">
+    <div><div class="logo">MRF <span>Tokens</span></div><div class="topbar-sub">Vapocure Dealer Incentive</div></div>
+  </div>
+  <div class="scroll">
+    <div class="section-label">Dealer Name / Code</div>
+    <input class="dealer-input" id="dealerName" type="text" placeholder="e.g. Ravi Paints — DLR-042"/>
+    <button class="main-btn" onclick="goScan()">📷 Start Counting Tokens</button>
+    <div class="stats-row">
+      <div class="stat-box"><div class="stat-lbl">TODAY'S ENTRIES</div><div class="stat-val" id="statE">0</div></div>
+      <div class="stat-box"><div class="stat-lbl">TOTAL PAYOUT</div><div class="stat-val gold" id="statT">₹0</div></div>
+    </div>
+    <div class="section-label">Recent Entries</div>
+    <div id="recentList"><div class="empty">No entries yet.<br>Tap "Start Counting Tokens"</div></div>
+  </div>
+  <div class="bnav">
+    <button class="bnav-btn active" onclick="show('homeScreen')"><span class="bnav-icon">🏠</span>Home</button>
+    <button class="bnav-btn" onclick="goScan()"><span class="bnav-icon">📷</span>Scan</button>
+    <button class="bnav-btn" onclick="show('logScreen')"><span class="bnav-icon">📋</span>Log</button>
+  </div>
+</div>
+
+<!-- ═══ SCAN ═══ -->
+<div class="screen" id="scanScreen">
+  <div class="topbar">
+    <button class="back-btn" onclick="stopBack()">← Back</button>
+    <div style="text-align:right">
+      <div class="logo" style="font-size:0.9rem;">Batch <span>Scanner</span></div>
+      <div class="topbar-sub" id="scanDealer">—</div>
+    </div>
+  </div>
+
+  <!-- Camera -->
+  <div class="cam-area" id="camArea">
+    <video id="videoEl" autoplay playsinline muted></video>
+    <canvas id="snapCanvas"></canvas>
+    <img id="previewImg" alt=""/>
+    <div class="corner tl"></div><div class="corner tr"></div>
+    <div class="corner bl"></div><div class="corner br"></div>
+    <div class="cam-hint" id="camHint">Spread tokens flat → fill the frame → tap 📸</div>
+  </div>
+
+  <!-- Running total bar -->
+  <div class="batch-bar">
+    <div class="batch-label" id="batchLabel">Batch 0 · Ready</div>
+    <div class="batch-total" id="batchTotal">₹0</div>
+  </div>
+
+  <!-- 6-tile tally -->
+  <div class="mini-tally" style="grid-template-columns:repeat(7,1fr);">
+    <div class="mt t25b" id="t25"><div class="mt-d">₹25</div><div class="mt-c" id="c25">0</div><div class="mt-v" id="v25">₹0</div></div>
+    <div class="mt t35b" id="t35"><div class="mt-d">₹35</div><div class="mt-c" id="c35">0</div><div class="mt-v" id="v35">₹0</div></div>
+    <div class="mt t50b" id="t50"><div class="mt-d">₹50</div><div class="mt-c" id="c50">0</div><div class="mt-v" id="v50">₹0</div></div>
+    <div class="mt t75b" id="t75"><div class="mt-d">₹75</div><div class="mt-c" id="c75">0</div><div class="mt-v" id="v75">₹0</div></div>
+    <div class="mt t100b" id="t100"><div class="mt-d">₹100</div><div class="mt-c" id="c100">0</div><div class="mt-v" id="v100">₹0</div></div>
+    <div class="mt t150b" id="t150"><div class="mt-d">₹150</div><div class="mt-c" id="c150">0</div><div class="mt-v" id="v150">₹0</div></div>
+    <div class="mt t200b" id="t200"><div class="mt-d">₹200</div><div class="mt-c" id="c200">0</div><div class="mt-v" id="v200">₹0</div></div>
+  </div>
+
+  <!-- Result -->
+  <div class="result-panel" id="resultPanel">Point camera at a batch of tokens and tap 📸</div>
+
+  <!-- Batch log -->
+  <div class="batch-log" id="batchLog"></div>
+
+  <!-- Buttons -->
+  <!-- Scan row -->
+  <div style="display:flex;gap:6px;padding:6px 10px 4px;flex-shrink:0;background:var(--surface);border-top:1px solid var(--border);">
+    <button class="btn btn-cam" style="flex:2" id="snapBtn" onclick="snap()">📸 Take Photo</button>
+    <button class="btn btn-ai" style="flex:2" id="aiBtn" onclick="analyze()" disabled>🤖 Count</button>
+    <button class="btn btn-sec" style="flex:1" id="retakeBtn" onclick="retake()" disabled>🔄</button>
+  </div>
+  <!-- Done row - separate so it is always visible -->
+  <div style="padding:0 10px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));background:var(--surface);flex-shrink:0;">
+    <button class="btn btn-done" style="width:100%;padding:13px;" id="doneBtn" onclick="finishScan()" disabled>✅ Finished Counting — View Summary</button>
+  </div>
+
+</div>
+
+<!-- ═══ SUMMARY ═══ -->
+<div class="screen" id="summaryScreen">
+  <div class="summary-header">
+    <div class="summary-dealer" id="sumDealer">—</div>
+    <div class="summary-title">Session Summary</div>
+    <div class="summary-total" id="sumTotal">₹0</div>
+    <div class="summary-sub" id="sumSub">0 tokens · 0 batches</div>
+  </div>
+  <div class="scroll">
+    <div class="section-label" style="margin-bottom:10px;">Denomination Breakdown</div>
+    <div id="denomRows"></div>
+    <div class="batch-summary">
+      <div class="batch-summary-title">Batch Details</div>
+      <div id="batchSummaryRows"></div>
+    </div>
+    <div class="report-btns">
+      <button class="btn-excel" onclick="exportExcel()">📊 Excel</button>
+      <button class="btn-wa" onclick="sendWA()">💬 WhatsApp</button>
+    </div>
+    <button class="btn-new" onclick="newSession()">✚ New Dealer</button>
+  </div>
+</div>
+
+<!-- ═══ LOG ═══ -->
+<div class="screen" id="logScreen">
+  <div class="topbar">
+    <button class="back-btn" onclick="show('homeScreen')">← Back</button>
+    <div style="text-align:right"><div class="logo" style="font-size:0.9rem;">Session <span>Log</span></div><div class="topbar-sub" id="logCount">0 entries</div></div>
+  </div>
+  <div class="scroll">
+    <div class="grand-bar">
+      <div><div class="gt-lbl">GRAND TOTAL PAYOUT</div><div class="gt-sub" id="gtT">0 tokens</div></div>
+      <div class="gt-amt" id="gtA">₹0</div>
+    </div>
+    <div id="fullLog"><div class="empty">No entries yet.</div></div>
+    <div class="log-report-btns">
+      <button class="btn-excel" onclick="exportExcel()">📊 Excel</button>
+      <button class="btn-wa" onclick="sendWA()">💬 WhatsApp</button>
+    </div>
+  </div>
+  <div class="bnav">
+    <button class="bnav-btn" onclick="show('homeScreen')"><span class="bnav-icon">🏠</span>Home</button>
+    <button class="bnav-btn" onclick="goScan()"><span class="bnav-icon">📷</span>Scan</button>
+    <button class="bnav-btn active"><span class="bnav-icon">📋</span>Log</button>
+  </div>
+</div>
+
+<script>
+const DENOMS = [25,35,50,75,100,150,200];
+const DCOLORS = {25:'#8B4513',35:'#b8860b',50:'#5b2d8e',75:'#2d6a4f',100:'#cc2200',150:'#1a3a6b',200:'#cc0066'};
+
+// State
+let sessionLog = [];
+let running = {t25:0,t35:0,t50:0,t75:0,t100:0,t150:0,t200:0}; // cumulative across batches
+let batches = []; // each batch result
+let currentB64 = null;
+let stream = null;
+let analyzing = false;
+let currentDealer = '';
+
+// ── Nav ──
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='logScreen') renderLog();
+  if(id==='homeScreen') renderHome();
+}
+
+function goScan(){
+  currentDealer = document.getElementById('dealerName').value.trim() || 'Unknown Dealer';
+  document.getElementById('scanDealer').textContent = currentDealer;
+  resetScan();
+  show('scanScreen');
+  startCam();
+}
+
+function stopBack(){ stopCam(); show('homeScreen'); }
+
+// ── Camera ──
+async function startCam(){
+  // Always stop existing stream first
+  stopCam();
+  // Small delay to let browser release camera
+  await new Promise(r => setTimeout(r, 300));
+
+  const v = document.getElementById('videoEl');
+  const img = document.getElementById('previewImg');
+  img.style.display = 'none';
+  v.style.display = 'block';
+  v.srcObject = null;
+  document.getElementById('snapBtn').disabled = true;
+  document.getElementById('snapBtn').innerHTML = '📷 Starting…';
+  document.getElementById('snapBtn').onclick = snap;
+  setResult('', 'Starting camera…');
+
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'},width:{ideal:3840},height:{ideal:2160}},audio:false
+    });
+    v.srcObject = stream;
+    await v.play();
+    document.getElementById('camArea').style.height = Math.round(window.innerHeight * 0.36) + 'px';
+    document.getElementById('snapBtn').disabled = false;
+    document.getElementById('snapBtn').innerHTML = '📸 Take Photo';
+    document.getElementById('snapBtn').onclick = snap;
+    document.getElementById('camHint').textContent = 'Spread tokens flat → fill frame → tap 📸';
+    setResult('', batches.length > 0 ? `✓ ${batches.length} batch${batches.length>1?'es':''} done — ready for next` : '');
+  }catch(e){
+    setResult('err','Camera blocked — use Upload');
+    document.getElementById('snapBtn').innerHTML = '📁 Upload';
+    document.getElementById('snapBtn').onclick = doUpload;
+    document.getElementById('snapBtn').disabled = false;
+  }
+}
+
+function stopCam(){
+  if(stream){
+    stream.getTracks().forEach(t=>t.stop());
+    stream = null;
+    const v = document.getElementById('videoEl');
+    v.srcObject = null;
+  }
+}
+
+function snap(){
+  const v = document.getElementById('videoEl');
+  const c = document.getElementById('snapCanvas');
+  c.width = v.videoWidth||1280; c.height = v.videoHeight||720;
+  c.getContext('2d').drawImage(v,0,0);
+  currentB64 = c.toDataURL('image/jpeg',1.0).split(',')[1];
+  // Stop stream immediately after capture to free camera for next restart
+  stopCam();
+  // Show preview
+  const img = document.getElementById('previewImg');
+  img.src = 'data:image/jpeg;base64,'+currentB64;
+  img.style.display = 'block';
+  v.style.display = 'none';
+  document.getElementById('aiBtn').disabled = false;
+  document.getElementById('retakeBtn').disabled = false;
+  document.getElementById('snapBtn').disabled = true;
+  document.getElementById('snapBtn').innerHTML = '📸 Take Photo';
+  document.getElementById('camHint').textContent = '';
+  setResult('', '✓ Photo taken — tap 🤖 Count');
+}
+
+function retake(){
+  currentB64 = null;
+  document.getElementById('previewImg').style.display = 'none';
+  document.getElementById('aiBtn').disabled = true;
+  document.getElementById('retakeBtn').disabled = true;
+  document.getElementById('snapBtn').disabled = false;
+  setResult('', '');
+  startCam();
+}
+
+function doUpload(){
+  const inp = document.createElement('input');
+  inp.type='file'; inp.accept='image/*';
+  inp.onchange = e=>{
+    const f = e.target.files[0]; if(!f) return;
+    const r = new FileReader();
+    r.onload = ev=>{
+      currentB64 = ev.target.result.split(',')[1];
+      const img = document.getElementById('previewImg');
+      img.src = ev.target.result; img.style.display='block';
+      document.getElementById('videoEl').style.display='none';
+      document.getElementById('aiBtn').disabled=false;
+      document.getElementById('retakeBtn').disabled=false;
+      setResult('','✓ Photo loaded — tap 🤖 Count');
+    };
+    r.readAsDataURL(f);
+  };
+  inp.click();
+}
+
+// ── AI Analysis ──
+async function analyze(){
+  if(!currentB64||analyzing) return;
+  analyzing = true;
+  document.getElementById('aiBtn').disabled = true;
+  document.getElementById('aiBtn').innerHTML = '<span class="spin"></span>Counting…';
+  setResult('analyzing','<span class="spin"></span> AI counting tokens in this batch…');
+
+  try{
+    const resp = await fetch('/analyze',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:'image/jpeg',data:currentB64}},
+        {type:'text',text:'Count all tokens in this photo.'}
+      ]}]})
+    });
+    const data = await resp.json();
+    const raw = (data.content?.[0]?.text||'').replace(/```json|```/g,'').trim();
+    // Extract JSON even if there is extra text around it
+    const jsonMatch = raw.match(/\{[^{}]*\}/);
+    if(!jsonMatch) throw new Error('No valid JSON in response — try again');
+    const p = JSON.parse(jsonMatch[0]);
+
+    // Add to running total
+    const batchResult = {
+      t25:p.t25||0,t35:p.t35||0,t50:p.t50||0,t75:p.t75||0,
+      t100:p.t100||0,t150:p.t150||0,t200:p.t200||0,
+      notes:p.notes||''
+    };
+    DENOMS.forEach(d=>{ running['t'+d] += batchResult['t'+d]; });
+    batches.push(batchResult);
+
+    updateTally();
+    renderBatchLog();
+
+    // Result summary
+    const bTotal = DENOMS.reduce((s,d)=>s+batchResult['t'+d]*d,0);
+    const bCount = DENOMS.reduce((s,d)=>s+batchResult['t'+d],0);
+    let lines = `✓ Batch ${batches.length}: ${bCount} tokens = ₹${bTotal.toLocaleString('en-IN')}`;
+    if(p.notes) lines += `\n📌 ${p.notes}`;
+    setResult('ok', lines);
+
+    document.getElementById('doneBtn').disabled = false;
+    // Ready for next batch - show clear prompt
+    document.getElementById("retakeBtn").disabled = true;
+    document.getElementById("aiBtn").disabled = true;
+    document.getElementById("snapBtn").disabled = false;
+    document.getElementById("snapBtn").innerHTML = "📸 Next Batch";
+    document.getElementById("previewImg").style.display = "none";
+    document.getElementById("videoEl").style.display = "block";
+    currentB64 = null;
+    startCam();
+
+  }catch(err){
+    setResult('err','⚠ Failed: '+err.message);
+    document.getElementById('aiBtn').disabled = false;
+  }
+
+  analyzing = false;
+  document.getElementById('aiBtn').innerHTML = '🤖 Count';
+}
+
+// ── Tally ──
+function updateTally(){
+  let grandTotal = 0;
+  let grandCount = 0;
+  DENOMS.forEach(d=>{
+    const v = running['t'+d];
+    document.getElementById('c'+d).textContent = v;
+    document.getElementById('v'+d).textContent = '₹'+(v*d);
+    document.getElementById('t'+d).classList.toggle('lit', v>0);
+    grandTotal += v*d; grandCount += v;
+  });
+  document.getElementById('batchTotal').textContent = '₹'+grandTotal.toLocaleString('en-IN');
+  document.getElementById('batchLabel').textContent = `Batch ${batches.length} done · ${grandCount} tokens`;
+}
+
+function renderBatchLog(){
+  const el = document.getElementById('batchLog');
+  el.innerHTML = batches.map((b,i)=>{
+    const total = DENOMS.reduce((s,d)=>s+b['t'+d]*d,0);
+    const count = DENOMS.reduce((s,d)=>s+b['t'+d],0);
+    const parts = DENOMS.filter(d=>b['t'+d]>0).map(d=>`₹${d}×${b['t'+d]}`).join(' ');
+    return `<div class="batch-item">
+      <div class="batch-num">#${i+1}</div>
+      <div class="batch-detail">${parts||'—'}</div>
+      <div class="batch-amt">₹${total.toLocaleString('en-IN')}</div>
+    </div>`;
+  }).reverse().join('');
+}
+
+// ── Finish ──
+function finishScan(){
+  const totalT = DENOMS.reduce((s,d)=>s+running['t'+d],0);
+  if(totalT===0) return;
+  const total = DENOMS.reduce((s,d)=>s+running['t'+d]*d,0);
+  // Save to log
+  sessionLog.unshift({
+    id:Date.now(), dealer:currentDealer,
+    ...running, total,
+    batches:[...batches],
+    time:new Date().toLocaleString('en-IN'), approved:false
+  });
+  updateStats();
+  stopCam();
+  showSummary();
+}
+
+function showSummary(){
+  const totalT = DENOMS.reduce((s,d)=>s+running['t'+d],0);
+  const total = DENOMS.reduce((s,d)=>s+running['t'+d]*d,0);
+  document.getElementById('sumDealer').textContent = currentDealer;
+  document.getElementById('sumTotal').textContent = '₹'+total.toLocaleString('en-IN');
+  document.getElementById('sumSub').textContent = `${totalT} tokens · ${batches.length} batch${batches.length!==1?'es':''}`;
+
+  // Denom rows
+  document.getElementById('denomRows').innerHTML = DENOMS.filter(d=>running['t'+d]>0).map(d=>`
+    <div class="denom-row">
+      <div class="denom-dot" style="background:${DCOLORS[d]}"></div>
+      <div class="denom-name">₹${d} tokens</div>
+      <div class="denom-count">${running['t'+d]} pcs</div>
+      <div class="denom-val">₹${(running['t'+d]*d).toLocaleString('en-IN')}</div>
+    </div>`).join('');
+
+  // Batch rows
+  document.getElementById('batchSummaryRows').innerHTML = batches.map((b,i)=>{
+    const bTotal = DENOMS.reduce((s,d)=>s+b['t'+d]*d,0);
+    const bCount = DENOMS.reduce((s,d)=>s+b['t'+d],0);
+    return `<div class="batch-summary-row">Batch ${i+1}: ${bCount} tokens = ₹${bTotal.toLocaleString('en-IN')}</div>`;
+  }).join('');
+
+  show('summaryScreen');
+}
+
+function newSession(){
+  document.getElementById('dealerName').value='';
+  show('homeScreen');
+}
+
+function resetScan(){
+  stopCam(); currentB64=null; batches=[];
+  running={t25:0,t35:0,t50:0,t75:0,t100:0,t150:0,t200:0};
+  updateTally();
+  document.getElementById('batchLog').innerHTML='';
+  document.getElementById('batchLabel').textContent='Batch 0 · Ready';
+  document.getElementById('batchTotal').textContent='₹0';
+  document.getElementById('snapBtn').disabled=true;
+  document.getElementById('snapBtn').innerHTML='📸';
+  document.getElementById('snapBtn').onclick=snap;
+  document.getElementById('aiBtn').disabled=true;
+  document.getElementById('aiBtn').innerHTML='🤖 Count';
+  document.getElementById('retakeBtn').disabled=true;
+  document.getElementById('doneBtn').disabled=true;
+  document.getElementById('previewImg').style.display='none';
+  document.getElementById('videoEl').style.display='block';
+  setResult('','');
+}
+
+function setResult(type,msg){
+  const el=document.getElementById('resultPanel');
+  el.className='result-panel'+(type?' '+type:'');
+  el.innerHTML=msg;
+}
+
+// ── Home & Log ──
+function detailStr(e){
+  return DENOMS.filter(d=>e['t'+d]>0).map(d=>`₹${d}×${e['t'+d]}`).join(' · ');
+}
+
+function renderHome(){
+  const el=document.getElementById('recentList');
+  if(!sessionLog.length){el.innerHTML='<div class="empty">No entries yet.<br>Tap "Start Counting Tokens"</div>';return;}
+  el.innerHTML=sessionLog.slice(0,5).map(e=>`
+    <div class="entry-card ${e.approved?'approved':''}">
+      <div class="entry-row"><div class="entry-dealer">${e.dealer}</div><div class="entry-amount">₹${e.total.toLocaleString('en-IN')}</div></div>
+      <div class="entry-detail">${detailStr(e)}</div>
+      <div class="entry-detail">${e.time}</div>
+    </div>`).join('');
+}
+
+function renderLog(){
+  const el=document.getElementById('fullLog');
+  document.getElementById('logCount').textContent=`${sessionLog.length} entries`;
+  if(!sessionLog.length){el.innerHTML='<div class="empty">No entries yet.</div>';return;}
+  const grand=sessionLog.reduce((s,e)=>s+e.total,0);
+  const totalT=sessionLog.reduce((s,e)=>s+DENOMS.reduce((x,d)=>x+(e['t'+d]||0),0),0);
+  document.getElementById('gtA').textContent='₹'+grand.toLocaleString('en-IN');
+  document.getElementById('gtT').textContent=`${totalT} tokens · ${sessionLog.length} dealers`;
+  el.innerHTML=sessionLog.map(e=>`
+    <div class="entry-card ${e.approved?'approved':''}">
+      <div class="entry-row"><div class="entry-dealer">${e.dealer}</div><div class="entry-amount">₹${e.total.toLocaleString('en-IN')}</div></div>
+      <div class="entry-detail">${detailStr(e)}</div>
+      <div class="entry-detail">${e.time} · ${(e.batches||[]).length} batches</div>
+      ${e.approved?'<div style="color:var(--green);font-size:0.65rem;margin-top:4px;font-family:Space Mono,monospace">✓ Approved</div>':''}
+      <div class="entry-actions">
+        ${!e.approved?`<button class="btn-approve" onclick="approve(${e.id})">✓ Approve</button>`:''}
+        <button class="btn-del" onclick="del(${e.id})">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+function approve(id){const e=sessionLog.find(x=>x.id===id);if(e){e.approved=true;renderLog();updateStats();}}
+function del(id){sessionLog=sessionLog.filter(x=>x.id!==id);renderLog();updateStats();}
+
+function updateStats(){
+  document.getElementById('statE').textContent=sessionLog.length;
+  document.getElementById('statT').textContent='₹'+sessionLog.reduce((s,e)=>s+e.total,0).toLocaleString('en-IN');
+  renderHome();
+}
+
+// ── Excel Export ──
+function exportExcel(){
+  if(!sessionLog.length){alert('No entries to export.');return;}
+  const XLSX=window.XLSX;
+  const wb=XLSX.utils.book_new();
+
+  // Sheet 1: Summary
+  const rows=[
+    ['MRF VAPOCURE PAINTS — TOKEN REDEMPTION REPORT'],
+    ['Generated:',new Date().toLocaleString('en-IN')],
+    [],
+    ['Dealer','₹25','₹50','₹75','₹100','₹150','₹200','Total Tokens','Total (₹)','Batches','Date/Time','Status'],
+    ...sessionLog.map(e=>[
+      e.dealer,e.t25,e.t50,e.t75,e.t100,e.t150,e.t200,
+      DENOMS.reduce((s,d)=>s+(e['t'+d]||0),0),
+      e.total,(e.batches||[]).length,e.time,e.approved?'Approved':'Pending'
+    ]),
+    [],
+    ['GRAND TOTAL','','','','','','',
+      sessionLog.reduce((s,e)=>s+DENOMS.reduce((x,d)=>x+(e['t'+d]||0),0),0),
+      sessionLog.reduce((s,e)=>s+e.total,0),'','','']
+  ];
+  const ws1=XLSX.utils.aoa_to_sheet(rows);
+  ws1['!cols']=[{wch:25},{wch:6},{wch:6},{wch:6},{wch:7},{wch:7},{wch:7},{wch:13},{wch:14},{wch:8},{wch:22},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws1,'Summary');
+
+  // Sheet 2: Denomination totals
+  const d2=[
+    ['DENOMINATION SUMMARY'],
+    [],
+    ['Denomination','Total Tokens','Total Amount (₹)'],
+    ...DENOMS.map(d=>['₹'+d,
+      sessionLog.reduce((s,e)=>s+(e['t'+d]||0),0),
+      sessionLog.reduce((s,e)=>s+(e['t'+d]||0)*d,0)
+    ]),
+    [],
+    ['TOTAL',
+      sessionLog.reduce((s,e)=>s+DENOMS.reduce((x,d)=>x+(e['t'+d]||0),0),0),
+      sessionLog.reduce((s,e)=>s+e.total,0)
+    ]
+  ];
+  const ws2=XLSX.utils.aoa_to_sheet(d2);
+  ws2['!cols']=[{wch:16},{wch:14},{wch:18}];
+  XLSX.utils.book_append_sheet(wb,ws2,'By Denomination');
+
+  XLSX.writeFile(wb,`MRF_Tokens_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ── WhatsApp ──
+function sendWA(){
+  if(!sessionLog.length){alert('No entries to send.');return;}
+  const grand=sessionLog.reduce((s,e)=>s+e.total,0);
+  const totalT=sessionLog.reduce((s,e)=>s+DENOMS.reduce((x,d)=>x+(e['t'+d]||0),0),0);
+  const date=new Date().toLocaleDateString('en-IN');
+  let msg=`🎨 *MRF Vapocure Paints*\n📋 *Token Redemption Report*\n📅 ${date}\n${'─'.repeat(28)}\n\n`;
+  sessionLog.forEach((e,i)=>{
+    msg+=`*${i+1}. ${e.dealer}*\n`;
+    DENOMS.forEach(d=>{ if(e['t'+d]) msg+=`  ₹${d} × ${e['t'+d]} = ₹${e['t'+d]*d}\n`; });
+    msg+=`  *Total: ₹${e.total.toLocaleString('en-IN')}*\n\n`;
+  });
+  msg+=`${'─'.repeat(28)}\n📦 *Total Tokens: ${totalT}*\n💰 *Grand Total: ₹${grand.toLocaleString('en-IN')}*`;
+  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`,'_blank');
+}
+
+// ── Viewport fix for Android ──
+function fixHeight(){
+  const h=window.innerHeight;
+  document.querySelectorAll('.screen').forEach(s=>s.style.height=h+'px');
+}
+fixHeight();
+window.addEventListener('resize',fixHeight);
+
+// ── PWA ──
+let dp=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();dp=e;});
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</body>
+</html>
